@@ -5,10 +5,14 @@ import Chisel.{defaultCompileOptions => _, _}
 import freechips.rocketchip.util.CompileOptions.NotStrictInferReset
 import freechips.rocketchip.tilelink._
 
+// 从a通道拿到信号之后，把他拆包，发出去
 class SinkA(info: ChipLinkInfo) extends Module
 {
   val io = new Bundle {
+    // a是输入
+    // 对于Decoupled而言，信号一定是向外的
     val a = Decoupled(new TLBundleA(info.edgeIn.bundle)).flip
+    // q是输出
     val q = Decoupled(new DataLayer(info.params))
   }
 
@@ -18,6 +22,8 @@ class SinkA(info: ChipLinkInfo) extends Module
   val domain = info.mux(tl2cl.mapValues(_.domain))
 
   // We need a Q because we stall the channel while serializing it's header
+  // We should pay attention to injection,
+  // Serilizing
   val inject = Module(new PartialInjector(io.a.bits))
   inject.io.i <> Queue(io.a, 1, flow=true)
   inject.io.i_last := info.edgeIn.last(inject.io.i)

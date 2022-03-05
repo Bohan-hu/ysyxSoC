@@ -13,25 +13,30 @@ class TX(info: ChipLinkInfo) extends Module
     val c2b_rst  = Bool(OUTPUT)
     val c2b_send = Bool(OUTPUT)
     val c2b_data = UInt(OUTPUT, info.params.dataBits)
+    // 非同步的信号
     val a = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
     val b = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
     val c = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
     val d = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
     val e = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
+    // 同步的信号
     val sa = DecoupledIO(new DataLayer(info.params)).flip
     val sb = DecoupledIO(new DataLayer(info.params)).flip
     val sc = DecoupledIO(new DataLayer(info.params)).flip
     val sd = DecoupledIO(new DataLayer(info.params)).flip
     val se = DecoupledIO(new DataLayer(info.params)).flip
+    // TODO: 什么是Credit
     val rxc = new AsyncBundle(new CreditBump(info.params), AsyncQueueParams.singleton()).flip
     val txc = new AsyncBundle(new CreditBump(info.params), AsyncQueueParams.singleton()).flip
   }
 
   // Currently available credits
+  // 目前可用的Credit
   val rx = RegInit(CreditBump(info.params, 0))
   val tx = RegInit(CreditBump(info.params, 0))
 
   // Constantly pull credits from RX
+  // 从Rx轮训Credits
   val rxInc = FromAsyncBundle(io.rxc)
   val txInc = FromAsyncBundle(io.txc)
   rxInc.ready := Bool(true)
@@ -39,6 +44,7 @@ class TX(info: ChipLinkInfo) extends Module
 
   // Cross the requests (if necessary)
   val sync = info.params.syncTX
+  // Use different Queue according to whether it is sync
   val qa = if (sync) ShiftQueue(io.sa, 2) else FromAsyncBundle(io.a)
   val qb = if (sync) ShiftQueue(io.sb, 2) else FromAsyncBundle(io.b)
   val qc = if (sync) ShiftQueue(io.sc, 2) else FromAsyncBundle(io.c)

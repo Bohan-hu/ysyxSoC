@@ -11,11 +11,18 @@ import freechips.rocketchip.util._
 
 class ChipLink(val params: ChipLinkParams)(implicit p: Parameters) extends LazyModule() {
 
+  // Node for the device tree
   val device = new SimpleBus("chiplink", Seq("sifive,chiplink"))
 
+  // If the parameter can be manager, return a seq
+  // Otherwise, return Nil
+  // AddressSet => Slave Parameters
   private def maybeManager(x: Seq[AddressSet], f: Seq[AddressSet] => TLSlaveParameters) =
     if (x.isEmpty) Nil else Seq(f(x))
 
+  // Slave node, for accepting request from A, sending response from D
+  // The slave node can support TLUH and TLC
+  // Slave Node: 用于接收请求，是子节点，通道信号方向：A入，D出
   private val slaveNode = TLManagerNode(Seq(TLSlavePortParameters.v1(
     managers =
       maybeManager(params.TLUH, a => TLSlaveParameters.v1(
@@ -91,9 +98,11 @@ class ChipLink(val params: ChipLinkParams)(implicit p: Parameters) extends LazyM
       // If fpgaReset, we need a pulse that arrives before b2c_clk locks
       val fpga_reset = if (params.fpgaReset) Some(Bool(INPUT)) else None
     })
+    // Port to fpga
     val port = ioNode.bundle
 
     // Ensure downstream devices support our requirements
+    // Slave Node是Manager，就是接收请求的那一方，A通道是入，D通道是出
     val (in,  edgeIn)  = slaveNode.in(0)
     val (out, edgeOut) = masterNode.out(0)
 
@@ -174,14 +183,22 @@ class ChipLink(val params: ChipLinkParams)(implicit p: Parameters) extends LazyM
 
     rx.io.b2c_data := port.b2c.data
     rx.io.b2c_send := port.b2c.send
+    // RX接收到的A通道，是FPGA侧的设备从A通道发过来的！
+    // Note: Source的意义是什么？
+    // 这边的Source指的是“信号方向”层面的Source，也就是说这个ChipLink模块主动去发送的Source
+    // Sink也是如此
     out.a <> sourceA.io.a
     in .b <> sourceB.io.b
     out.c <> sourceC.io.c
+    // 入边的D是通过Source过来的，从RX得到
     in .d <> sourceD.io.d
     out.e <> sourceE.io.e
+    // 从rx收到消息并解包
+    // RX模块，负责把各个通道拿到，并且解包，把数据赋予到各个Bundle
     sourceA.io.q <> FromAsyncBundle(rx.io.a)
     sourceB.io.q <> FromAsyncBundle(rx.io.b)
     sourceC.io.q <> FromAsyncBundle(rx.io.c)
+    // SourceD: 接收数据用的
     sourceD.io.q <> FromAsyncBundle(rx.io.d)
     sourceE.io.q <> FromAsyncBundle(rx.io.e)
 
@@ -190,6 +207,7 @@ class ChipLink(val params: ChipLinkParams)(implicit p: Parameters) extends LazyM
     port.c2b.rst := tx.io.c2b_rst
     port.c2b.data := tx.io.c2b_data
     port.c2b.send := tx.io.c2b_send
+    // 
     sinkA.io.a <> in .a
     sinkB.io.b <> out.b
     sinkC.io.c <> in .c

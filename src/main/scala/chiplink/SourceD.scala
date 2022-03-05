@@ -6,6 +6,7 @@ import freechips.rocketchip.util.CompileOptions.NotStrictInferReset
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 
+// SourceD通道是用来接收数据的
 class SourceD(info: ChipLinkInfo) extends Module
 {
   val io = new Bundle {
@@ -58,6 +59,7 @@ class SourceD(info: ChipLinkInfo) extends Module
   }
 
   // Look for an available sink
+  // 从CAM里找个地方把传来的数据给先存下来
   val sink_ok = !q_grant || cam.io.alloc.ready
   val sink  = cam.io.key holdUnless d_first
   val stall = d_first && !sink_ok
