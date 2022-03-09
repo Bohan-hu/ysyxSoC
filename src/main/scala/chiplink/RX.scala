@@ -10,7 +10,7 @@ class RX(info: ChipLinkInfo) extends Module
 {
   val io = new Bundle {
     val b2c_send = Bool(INPUT)
-    val b2c_data = UInt(INPUT, info.params.dataBits)
+    val b2c_data = UInt(INPUT, 8)
     val a = new AsyncBundle(UInt(width = info.params.dataBits), info.params.crossing)
     val b = new AsyncBundle(UInt(width = info.params.dataBits), info.params.crossing)
     val c = new AsyncBundle(UInt(width = info.params.dataBits), info.params.crossing)
@@ -24,11 +24,19 @@ class RX(info: ChipLinkInfo) extends Module
   val b2c_data = RegNext(RegNext(io.b2c_data))
   val b2c_send = RegNext(RegNext(io.b2c_send), Bool(false))
   // b2c_send is NOT cleared on the first RegNext because this module's reset has a flop on it
+  val beatCnt = RegInit(0.U(2.W))
+  val b2c_data_concat = RegInit(0.U(32.W))
+  val b2c_data_valid = RegInit(false.B)
+  when(b2c_send) {
+    beatCnt := beatCnt + 1.U
+    b2c_data_concat := (b2c_data_concat << 8.U) | b2c_data
+  }
+  b2c_data_valid := (beatCnt === 3.U)
 
   // Fit b2c into the firstlast API
   val beat = Wire(Decoupled(UInt(width = info.params.dataBits)))
-  beat.bits  := b2c_data
-  beat.valid := b2c_send
+  beat.bits  := b2c_data_concat
+  beat.valid := b2c_data_valid
   beat.ready := Bool(true)
 
   // Select the correct HellaQueue for the request

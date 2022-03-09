@@ -9,7 +9,7 @@ class WideDataLayerPortLane(params: ChipLinkParams) extends GenericParameterized
   val clk  = Clock(OUTPUT)
   val rst  = Bool(OUTPUT)
   val send = Bool(OUTPUT)
-  val data = UInt(OUTPUT, width=params.dataBits)
+  val data = UInt(OUTPUT, width=8)
 }
 
 class WideDataLayerPort(params: ChipLinkParams) extends GenericParameterizedBundle(params) {

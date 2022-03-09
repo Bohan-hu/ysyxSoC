@@ -12,7 +12,7 @@ class TX(info: ChipLinkInfo) extends Module
     val c2b_clk  = Clock(OUTPUT)
     val c2b_rst  = Bool(OUTPUT)
     val c2b_send = Bool(OUTPUT)
-    val c2b_data = UInt(OUTPUT, info.params.dataBits)
+    val c2b_data = UInt(OUTPUT, 8)
     val a = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
     val b = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
     val c = new AsyncBundle(new DataLayer(info.params), info.params.crossing).flip
@@ -95,17 +95,32 @@ class TX(info: ChipLinkInfo) extends Module
   val winner = readys & requests
   val grant = Mux(first, winner, state)
   val allowed = Mux(first, readys, state)
-  (ioF zip allowed.asBools) foreach { case (beat, sel) => beat.ready := sel }
+  // When send is asserted, hold the origin data and assert txBusy
+  val txBusy = RegInit(false.B)
+  (ioF zip allowed.asBools) foreach { case (beat, sel) => beat.ready := sel & !txBusy}
 
-  val send = Mux(first, rxQ.io.deq.valid, (state & requests) =/= UInt(0))
-  assert (send === ((grant & requests) =/= UInt(0)))
+  val send = Mux(first, rxQ.io.deq.valid, (state & requests) =/= UInt(0)) & !txBusy
+  // assert (send === ((grant & requests) =/= UInt(0)))
 
   when (send) { first := (grant & lasts).orR }
   when (first) { state := winner }
 
+  val transferByteCnt = RegInit(0.U(2.W))
+  when(send) {
+    txBusy := true.B
+  }
+  when(txBusy) {
+    transferByteCnt := transferByteCnt + 1.U
+    when(transferByteCnt === 3.U) {
+      txBusy := false.B
+    }
+  }
+  val transferDataReg = RegEnable(Mux1H(grant, Vec(ioF.map(_.bits.data))), send)
+  val transferBytes = Vec(transferDataReg(31, 24), transferDataReg(23, 16), transferDataReg(15, 8), transferDataReg(7, 0))
+
   // Form the output beat
   io.c2b_clk  := clock
   io.c2b_rst  := AsyncResetReg(Bool(false), clock, reset, true, None)
-  io.c2b_send := RegNext(RegNext(send, Bool(false)), Bool(false))
-  io.c2b_data := RegNext(Mux1H(RegNext(grant), RegNext(Vec(ioF.map(_.bits.data)))))
+  io.c2b_send := RegNext(RegNext(txBusy))
+  io.c2b_data := RegNext(RegNext(transferBytes(transferByteCnt)))
 }
