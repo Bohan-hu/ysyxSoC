@@ -73,12 +73,15 @@ class PartialInjector[T <: TLDataChannel](gen: T) extends Module
     case b: TLBundleB => b.data
   }
 
+  // 一次传输一拍
   val state = RegInit(UInt(0, width=4)) // number of nibbles; [0,8]
   val shift = RegInit(UInt(0, width=32))
+  // state === 7的时候，full <=  1
   val full  = state(3)
   val partial = i_opcode === TLMessages.PutPartialData
 
   val last = RegInit(Bool(false))
+  // 如果是partial的话，自己维护last，否则用传入的信号的last
   io.o_last := Mux(partial, last, io.i_last)
 
   when (partial) {

@@ -25,8 +25,10 @@ class TX(info: ChipLinkInfo) extends Module
     val sc = DecoupledIO(new DataLayer(info.params)).flip
     val sd = DecoupledIO(new DataLayer(info.params)).flip
     val se = DecoupledIO(new DataLayer(info.params)).flip
-    // TODO: 什么是Credit (Done)
+    // 从RX输入的Credit，相当于这边得到的Credit
+    // TX credit自己维护，从对面拿
     val rxc = new AsyncBundle(new CreditBump(info.params), AsyncQueueParams.singleton()).flip
+    // RX credit是从RX拿到之后封装好发给对面
     val txc = new AsyncBundle(new CreditBump(info.params), AsyncQueueParams.singleton()).flip
   }
 
