@@ -52,19 +52,19 @@ class CreditBump(params: ChipLinkParams) extends GenericParameterizedBundle(para
     out
   }
 
+  def msb(x: UInt) = {
+    // rightOR: 找到最左边的1，然后把右边全部填为1
+    val mask = rightOR(x) >> 1
+    // maskOH: 把最高位的1找出来，其他的清除，是一个one-hot编码
+    val msbOH = ~(~x | mask)
+    val msb = OHToUInt(msbOH << 1, params.creditBits + 1) // 0 = 0, 1 = 1, 2 = 4, 3 = 8, ...
+    // 把位宽拓宽到5位
+    val pad = (msb | UInt(0, width=5))(4,0)
+    // 返回pad后的5位msb标志，和清除了msb的x
+    (pad, x & mask)
+  }
   // Send the MSB of the credits
   def toHeader: (UInt, CreditBump) = {
-    def msb(x: UInt) = {
-      // rightOR: 找到最左边的1，然后把右边全部填为1
-      val mask = rightOR(x) >> 1
-      // maskOH: 把最高位的1找出来，其他的清除，是一个one-hot编码
-      val msbOH = ~(~x | mask)
-      val msb = OHToUInt(msbOH << 1, params.creditBits + 1) // 0 = 0, 1 = 1, 2 = 4, 3 = 8, ...
-      // 把位宽拓宽到5位
-      val pad = (msb | UInt(0, width=5))(4,0)
-      // 返回pad后的5位msb标志，和清除了msb的x
-      (pad, x & mask)
-    }
     // 猜测一次清除掉x的一个msb，然后返回剩下的部分(x_rest)
     // 例如，01011,toHeader之后，就会返回3和00011
     val (a_msb, a_rest) = msb(a)
@@ -83,6 +83,48 @@ class CreditBump(params: ChipLinkParams) extends GenericParameterizedBundle(para
     out.c := c_rest
     out.d := d_rest
     out.e := e_rest
+    (header, out)
+  }
+  def toSimpleHeader: (UInt, CreditBump) = {
+    def msbOH(x: UInt) = {
+      val mask = rightOR(x) >> 1
+      ~(~x | mask)
+    }
+    // Find all msb and OR them into a single vector
+    val msbOR = X.map(msbOH(_)).reduce(_|_)
+    // Find the biggest msb
+    val msb2 = msbOH(msbOR)
+    // Find the owner of the biggst msb
+    val candidate = Wire(UInt(3.W))
+    candidate := 7.U
+    for ( i <- 0 until 5 ) {
+      val mask = X(i) & msb2
+      when(mask.orR()) {
+        candidate := i.U
+      }
+    }
+    // assert(candidate =/= 7.U)
+    val (a_msb, a_rest) = msb(a)
+    val (b_msb, b_rest) = msb(b)
+    val (c_msb, c_rest) = msb(c)
+    val (d_msb, d_rest) = msb(d)
+    val (e_msb, e_rest) = msb(e)
+
+    val header = Cat(
+      Mux(candidate === 4.U, e_msb, 0.U),
+      Mux(candidate === 3.U, d_msb, 0.U),
+      Mux(candidate === 2.U, c_msb, 0.U),
+      Mux(candidate === 1.U, b_msb, 0.U),
+      Mux(candidate === 0.U, a_msb, 0.U),
+      UInt(0, width = 4), // padding
+      UInt(5, width = 3))
+
+    val out = Wire(new CreditBump(params))
+    out.a := Mux(candidate === 0.U, a_rest, a)
+    out.b := Mux(candidate === 1.U, b_rest, b)
+    out.c := Mux(candidate === 2.U, c_rest, c)
+    out.d := Mux(candidate === 3.U, d_rest, d)
+    out.e := Mux(candidate === 4.U, e_rest, e)
     (header, out)
   }
 }

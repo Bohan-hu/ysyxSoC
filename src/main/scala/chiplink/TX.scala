@@ -85,7 +85,7 @@ class TX(info: ChipLinkInfo) extends Module
   // rxQ是最终发送出去的东西
   // “贪心”地每一次尽可能地归还最大的credit（2的n次方）
   val rxQ = Module(new ShiftQueue(new DataLayer(info.params), 2)) // maybe flow?
-  val (rxHeader, rxLeft) = rx.toHeader
+  val (rxHeader, rxLeft) = rx.toSimpleHeader
   // 不停地往rxq里塞东西，塞更新后的header
   rxQ.io.enq.valid := Bool(true)
   rxQ.io.enq.bits.data  := rxHeader
