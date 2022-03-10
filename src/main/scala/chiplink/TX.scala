@@ -63,7 +63,7 @@ class TX(info: ChipLinkInfo) extends Module
   // Prepare RX credit update headers
   val rxQ = Module(new ShiftQueue(new DataLayer(info.params), 2)) // maybe flow?
   val (rxHeader, rxLeft) = rx.toHeader
-  rxQ.io.enq.valid := Bool(true)
+  rxQ.io.enq.valid := rxHeader(31, 7).orR() // Don't constrantly send empty credits
   rxQ.io.enq.bits.data  := rxHeader
   rxQ.io.enq.bits.last  := Bool(true)
   rxQ.io.enq.bits.beats := UInt(1)
@@ -99,7 +99,7 @@ class TX(info: ChipLinkInfo) extends Module
   val txBusy = RegInit(false.B)
   (ioF zip allowed.asBools) foreach { case (beat, sel) => beat.ready := sel & !txBusy}
 
-  val send = Mux(first, rxQ.io.deq.valid, (state & requests) =/= UInt(0)) & !txBusy
+  val send = ioF.map(_.fire()).orR
   // assert (send === ((grant & requests) =/= UInt(0)))
 
   when (send) { first := (grant & lasts).orR }
