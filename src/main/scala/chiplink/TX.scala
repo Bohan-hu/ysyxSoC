@@ -87,7 +87,8 @@ class TX(info: ChipLinkInfo) extends Module
   val rxQ = Module(new ShiftQueue(new DataLayer(info.params), 2)) // maybe flow?
   val (rxHeader, rxLeft) = rx.toSimpleHeader
   // 不停地往rxq里塞东西，塞更新后的header
-  rxQ.io.enq.valid := Bool(true)
+  // rxQ.io.enq.valid := Bool(true)
+  rxQ.io.enq.valid := rxHeader(31, 7).orR
   rxQ.io.enq.bits.data  := rxHeader
   rxQ.io.enq.bits.last  := Bool(true)
   rxQ.io.enq.bits.beats := UInt(1)
@@ -133,7 +134,8 @@ class TX(info: ChipLinkInfo) extends Module
   // 也就是说，在没有能传输数据的时候，传输rxQ的东西
   // TODO: 若是有好几拍的传输，first会不会被拉低？拉低的时候给rxQ.io.deq.valid合不合适？这是不是造成卡死的原因？
   // Send是不是应该只是等于ioF zip allowed.asBools 的 fire?
-  val send = Mux(first, rxQ.io.deq.valid, (state & requests) =/= UInt(0))
+  // val send = Mux(first, rxQ.io.deq.valid, (state & requests) =/= UInt(0))
+  val send = ioF.map(_.fire()).orR
   assert (send === ((grant & requests) =/= UInt(0)))
 
   // 下一拍是first!!! grant是当前正在传输的通道, lasts是正在传输的那个通道是否是该通道的最后一拍
