@@ -26,18 +26,10 @@ object AXI4SlaveNodeGenerator {
 class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val chipMaster = LazyModule(new ChipLinkMaster)
   val xbar = AXI4Xbar()
-  val apbxbar = LazyModule(new APBFanout).node
   val cpu = LazyModule(new CPU(idBits = ChipLinkParam.idBits))
   val chiplinkNode = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
 
-  val luart = LazyModule(new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000)))
-  val lspi  = LazyModule(new APBSPI(
-    AddressSet.misaligned(0x10001000, 0x1000) ++    // SPI controller
-    AddressSet.misaligned(0x30000000, 0x10000000)   // XIP flash
-  ))
-
-  List(lspi.node, luart.node).map(_ := apbxbar)
-  List(chiplinkNode, apbxbar := AXI4ToAPB()).map(_ := xbar)
+  chiplinkNode := xbar
   xbar := cpu.masterNode
 
   override lazy val module = new LazyModuleImp(this) with DontTouch {
@@ -60,11 +52,6 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     val fpga_io = IO(chiselTypeOf(chipMaster.module.fpga_io))
     fpga_io <> chipMaster.module.fpga_io
 
-    // expose spi and uart slave interface as ports
-    val spi = IO(chiselTypeOf(lspi.module.spi_bundle))
-    val uart = IO(chiselTypeOf(luart.module.uart))
-    uart <> luart.module.uart
-    spi <> lspi.module.spi_bundle
   }
 }
 
@@ -94,10 +81,44 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     fpga.master_mmio.map(_.tieoff())
     fpga.slave.map(_.tieoff())
 
+    // TODO
     masic.intr_from_chipSlave := false.B
 
-    val spiFlash = Module(new spiFlash)
-    spiFlash.io <> masic.spi
-    masic.uart.rx := false.B
+  }
+}
+
+class FPGATop(implicit p: Parameters) extends LazyModule 
+{
+  val asic = LazyModule(new ysyxSoCASIC)
+  ElaborationArtefacts.add("graphml", graphML)
+
+  override lazy val module = new LazyModuleImp(this) with DontTouch {
+    val clockFPGA = IO(Input(Clock()))
+    val resetFPGA = IO(Input(Bool()))
+    val fpga = withClockAndReset(clockFPGA, resetFPGA) {
+      LazyModule(new ysyxSoCFPGA)
+    } 
+    val masic = asic.module
+    val mfpga = withClockAndReset(clockFPGA, resetFPGA) {
+      Module(fpga.module)
+    } 
+    // val mfpga = Module(fpga.module)
+    mfpga.dontTouchPorts()
+    masic.dontTouchPorts()
+
+    masic.fpga_io.b2c <> mfpga.fpga_io.c2b
+    mfpga.fpga_io.b2c <> masic.fpga_io.c2b
+
+    val io_slave = IO(Flipped(AXI4Bundle(CPUAXI4BundleParameters())))
+    val io_master_mem = IO(AXI4Bundle(CPUAXI4BundleParameters()))
+    val io_master_mmio = IO(AXI4Bundle(CPUAXI4BundleParameters()))
+
+    // Connect AXI signals
+    io_master_mem <> fpga.master_mem.head
+    io_master_mmio <> fpga.master_mmio.head
+    fpga.slave.head <> io_slave
+
+    // TODO
+    masic.intr_from_chipSlave := false.B
   }
 }

@@ -7,13 +7,33 @@ import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.devices.debug.Debug
 import freechips.rocketchip.diplomacy.LazyModule
 import freechips.rocketchip.util.AsyncResetReg
+import freechips.rocketchip.amba.axi4._
 import ysyx._
 
+// class TestHarness()(implicit p: Parameters) extends Module {
+//   val io = IO(new Bundle { })
+//   val ldut = LazyModule(new ysyxSoCFull)
+//   val dut = Module(ldut.module)
+//   dut.dontTouchPorts()
+// }
+
 class TestHarness()(implicit p: Parameters) extends Module {
-  val io = IO(new Bundle { })
-  val ldut = LazyModule(new ysyxSoCFull)
+  val io = IO(new Bundle { 
+    val clockFPGA = Input(Clock())
+    val resetFPGA = Input(Bool())
+    val master_mem = AXI4Bundle(CPUAXI4BundleParameters())
+    val master_mmio = AXI4Bundle(CPUAXI4BundleParameters())
+    val slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters()))
+  })
+  val ldut = LazyModule(new FPGATop)
   val dut = Module(ldut.module)
+  dut.clockFPGA := io.clockFPGA
+  dut.resetFPGA := io.resetFPGA
   dut.dontTouchPorts()
+  // Connect AXI signals
+  io.master_mem <> dut.io_master_mem
+  io.master_mmio <> dut.io_master_mmio
+  dut.io_slave <> io.slave
 }
 
 class TestHarness2()(implicit p: Parameters) extends Module {
