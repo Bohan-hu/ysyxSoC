@@ -13,32 +13,40 @@ object CPUAXI4BundleParameters {
   def apply() = AXI4BundleParameters(addrBits = 32, dataBits = 64, idBits = ChipLinkParam.idBits)
 }
 
-class ysyx_000000 extends BlackBox {
+class NutShell extends BlackBox {
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Reset())
-    val io_interrupt = Input(Bool())
-    val io_master = AXI4Bundle(CPUAXI4BundleParameters())
-    val io_slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters()))
+    val io_meip = Input(UInt(3.W))
+    val io_mem = AXI4Bundle(CPUAXI4BundleParameters())
+    val io_mmio = AXI4Bundle(CPUAXI4BundleParameters())
+    val io_frontend = Flipped(AXI4Bundle(CPUAXI4BundleParameters()))
   })
 }
 
 class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
-  val masterNode = AXI4MasterNode(p(ExtIn).map(params =>
+  val memNode = AXI4MasterNode(p(ExtIn).map(params =>
+    AXI4MasterPortParameters(
+      masters = Seq(AXI4MasterParameters(
+        name = "cpu",
+        id   = IdRange(0, 1 << idBits))))).toSeq)
+  val mmioNode = AXI4MasterNode(p(ExtIn).map(params =>
     AXI4MasterPortParameters(
       masters = Seq(AXI4MasterParameters(
         name = "cpu",
         id   = IdRange(0, 1 << idBits))))).toSeq)
   lazy val module = new LazyModuleImp(this) {
-    val (master, _) = masterNode.out(0)
-    val interrupt = IO(Input(Bool()))
+    val (mem, _) = memNode.out(0)
+    val (mmio, _) = mmioNode.out(0)
+    val meip = IO(Input(UInt(3.W)))
     val slave = IO(Flipped(AXI4Bundle(CPUAXI4BundleParameters())))
 
-    val cpu = Module(new ysyx_000000)
+    val cpu = Module(new NutShell)
     cpu.io.clock := clock
     cpu.io.reset := reset
-    cpu.io.io_interrupt := interrupt
-    cpu.io.io_slave <> slave
-    master <> cpu.io.io_master
+    cpu.io.io_meip := meip
+    cpu.io.io_frontend <> slave
+    mem <> cpu.io.io_mem
+    mmio <> cpu.io.io_mmio
   }
 }

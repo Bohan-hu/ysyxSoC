@@ -30,9 +30,11 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val chiplinkNode = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
 
   chiplinkNode := xbar
-  xbar := cpu.masterNode
+  xbar := cpu.memNode
+  xbar := cpu.mmioNode
 
   override lazy val module = new LazyModuleImp(this) with DontTouch {
+    val meip = IO(Input(UInt(3.W)))
     // generate delayed reset for cpu, since chiplink should finish reset
     // to initialize some async modules before accept any requests from cpu
     //val cpu_reset = IO(Flipped(chiselTypeOf(reset)))
@@ -43,10 +45,11 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
 
     // connect chiplink dma interface to cpu
     cpu.module.slave <> chipMaster.master_mem
+    cpu.module.meip := meip
 
     // connect interrupt signal to cpu
     val intr_from_chipSlave = IO(Input(Bool()))
-    cpu.module.interrupt := intr_from_chipSlave
+    // cpu.module.interrupt := intr_from_chipSlave
 
     // expose chiplink fpga I/O interface as ports
     val fpga_io = IO(chiselTypeOf(chipMaster.module.fpga_io))
@@ -95,6 +98,7 @@ class FPGATop(implicit p: Parameters) extends LazyModule
   override lazy val module = new LazyModuleImp(this) with DontTouch {
     val clockFPGA = IO(Input(Clock()))
     val resetFPGA = IO(Input(Bool()))
+    val meip = IO(Input(UInt(3.W)))
     val fpga = withClockAndReset(clockFPGA, resetFPGA) {
       LazyModule(new ysyxSoCFPGA)
     } 
@@ -108,6 +112,7 @@ class FPGATop(implicit p: Parameters) extends LazyModule
 
     masic.fpga_io.b2c <> mfpga.fpga_io.c2b
     mfpga.fpga_io.b2c <> masic.fpga_io.c2b
+    masic.meip := meip
 
     val io_slave = IO(Flipped(AXI4Bundle(CPUAXI4BundleParameters())))
     val io_master_mem = IO(AXI4Bundle(CPUAXI4BundleParameters()))

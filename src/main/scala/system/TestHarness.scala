@@ -24,11 +24,13 @@ class TestHarness()(implicit p: Parameters) extends Module {
     val master_mem = AXI4Bundle(CPUAXI4BundleParameters())
     val master_mmio = AXI4Bundle(CPUAXI4BundleParameters())
     val slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters()))
+    val meip = Input(UInt(3.W))
   })
   val ldut = LazyModule(new FPGATop)
   val dut = Module(ldut.module)
   dut.clockFPGA := io.clockFPGA
   dut.resetFPGA := io.resetFPGA
+  dut.meip := io.meip
   dut.dontTouchPorts()
   // Connect AXI signals
   io.master_mem <> dut.io_master_mem
