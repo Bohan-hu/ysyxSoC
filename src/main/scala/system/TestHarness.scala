@@ -11,6 +11,7 @@ import freechips.rocketchip.amba.axi4._
 import ysyx._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.subsystem._
+import freechips.rocketchip.amba.apb._
 
 // class TestHarness()(implicit p: Parameters) extends Module {
 //   val io = IO(new Bundle { })
@@ -34,10 +35,18 @@ class TestHarness()(implicit p: Parameters) extends LazyModule {
   val xbar = AXI4Xbar()
   xbar := memNode
   xbar := mmioNode
-  val dummySlv = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
-  dummySlv := xbar
-  // SimMem := xbar
-  // apbBridge := xbar
+  val apbxbar = LazyModule(new APBFanout).node
+  val luart = LazyModule(new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000)))
+  val lspi  = LazyModule(new APBSPI(
+    AddressSet.misaligned(0x10001000, 0x1000) ++    // SPI controller
+    AddressSet.misaligned(0x30000000, 0x10000000)   // XIP flash
+  ))
+  List(lspi.node, luart.node).map(_ := apbxbar)
+  apbxbar := AXI4ToAPB() := xbar
+  // val (_, edgeParam) = memNode.out.head
+  // val simMem = LazyModule(new SimAXIMem(edgeParam, base = ChipLinkParam.mem.base, size = ChipLinkParam.mem.mask + 1))
+  val simMem = AXI4RAM(address = AddressSet.misaligned(ChipLinkParam.mem.base, ChipLinkParam.mem.mask + 1).head, beatBytes =  8)
+  simMem := xbar
   lazy val module = new LazyModuleImp(this) {
     val dut = ldut.module
     dut.clockFPGA := clock
