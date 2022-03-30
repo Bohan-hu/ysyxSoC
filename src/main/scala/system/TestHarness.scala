@@ -3,12 +3,14 @@
 package freechips.rocketchip.system
 
 import chisel3._
+import freechips.rocketchip.config.{Parameters}
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.devices.debug.Debug
-import freechips.rocketchip.diplomacy.LazyModule
 import freechips.rocketchip.util.AsyncResetReg
 import freechips.rocketchip.amba.axi4._
 import ysyx._
+import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.subsystem._
 
 // class TestHarness()(implicit p: Parameters) extends Module {
 //   val io = IO(new Bundle { })
@@ -17,25 +19,39 @@ import ysyx._
 //   dut.dontTouchPorts()
 // }
 
-class TestHarness()(implicit p: Parameters) extends Module {
-  val io = IO(new Bundle { 
-    val clockFPGA = Input(Clock())
-    val resetFPGA = Input(Bool())
-    val master_mem = AXI4Bundle(CPUAXI4BundleParameters())
-    val master_mmio = AXI4Bundle(CPUAXI4BundleParameters())
-    val slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters()))
-    val meip = Input(UInt(3.W))
-  })
+class TestHarness()(implicit p: Parameters) extends LazyModule {
   val ldut = LazyModule(new FPGATop)
-  val dut = Module(ldut.module)
-  dut.clockFPGA := io.clockFPGA
-  dut.resetFPGA := io.resetFPGA
-  dut.meip := io.meip
-  dut.dontTouchPorts()
-  // Connect AXI signals
-  io.master_mem <> dut.io_master_mem
-  io.master_mmio <> dut.io_master_mmio
-  dut.io_slave <> io.slave
+  val memNode = AXI4MasterNode(p(ExtIn).map(params =>
+    AXI4MasterPortParameters(
+      masters = Seq(AXI4MasterParameters(
+        name = "mem",
+        id   = IdRange(0, 1 << ChipLinkParam.idBits))))).toSeq)
+  val mmioNode = AXI4MasterNode(p(ExtIn).map(params =>
+    AXI4MasterPortParameters(
+      masters = Seq(AXI4MasterParameters(
+        name = "mmio",
+        id   = IdRange(0, 1 << ChipLinkParam.idBits))))).toSeq)
+  val xbar = AXI4Xbar()
+  xbar := memNode
+  xbar := mmioNode
+  val dummySlv = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
+  dummySlv := xbar
+  // SimMem := xbar
+  // apbBridge := xbar
+  lazy val module = new LazyModuleImp(this) {
+    val dut = ldut.module
+    dut.clockFPGA := clock
+    dut.resetFPGA := reset
+    dut.meip := 0.U
+    dut.dontTouchPorts()
+    val (mem, _) = memNode.out(0)
+    val (mmio, _) = mmioNode.out(0)
+    // Connect AXI signals
+    mem <> dut.io_master_mem
+    mmio <> dut.io_master_mmio
+    // Don't connect Slaves
+    dut.io_slave.tieoff()
+  }
 }
 
 class TestHarness2()(implicit p: Parameters) extends Module {
