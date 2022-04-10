@@ -29,11 +29,13 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val cpu = LazyModule(new CPU(idBits = ChipLinkParam.idBits))
   val chiplinkNode = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
 
+  // Temporaly add 2 nodes
   chiplinkNode := xbar
-  xbar := cpu.memNode
+  xbar := cpu.masterNode
   xbar := cpu.mmioNode
 
   override lazy val module = new LazyModuleImp(this) with DontTouch {
+    chipMaster.module.dontTouchPorts()
     val meip = IO(Input(UInt(3.W)))
     // generate delayed reset for cpu, since chiplink should finish reset
     // to initialize some async modules before accept any requests from cpu
@@ -45,7 +47,7 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
 
     // connect chiplink dma interface to cpu
     cpu.module.slave <> chipMaster.master_mem
-    cpu.module.meip := meip
+    cpu.module.interrupt := meip
 
     // connect interrupt signal to cpu
     val intr_from_chipSlave = IO(Input(Bool()))
@@ -105,25 +107,30 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     AXI4MasterPortParameters(
       masters = Seq(AXI4MasterParameters(
         name = "mem",
-        id   = IdRange(0, 1 << ChipLinkParam.idBits))))).toSeq)
+        id   = IdRange(0, 1))))).toSeq)
   val mmioNode = AXI4MasterNode(p(ExtIn).map(params =>
     AXI4MasterPortParameters(
       masters = Seq(AXI4MasterParameters(
         name = "mmio",
-        id   = IdRange(0, 1 << ChipLinkParam.idBits))))).toSeq)
+        id   = IdRange(1, 2))))).toSeq)
   val xbar = AXI4Xbar()
   xbar := memNode
   xbar := mmioNode
-  val apbxbar = LazyModule(new APBFanout).node
-  val luart = LazyModule(new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000)))
-  val lspi  = LazyModule(new APBSPI(
-    AddressSet.misaligned(0x10001000, 0x1000) ++    // SPI controller
-    AddressSet.misaligned(0x30000000, 0x10000000)   // XIP flash
-  ))
-  List(lspi.node, luart.node).map(_ := apbxbar)
-  apbxbar := AXI4ToAPB() := xbar
-  val simMem = AXI4RAM(address = AddressSet.misaligned(ChipLinkParam.mem.base, ChipLinkParam.mem.mask + 1).head, beatBytes =  8)
-  simMem := xbar
+  val fpga = true
+  if(!fpga) {
+    // val apbxbar = LazyModule(new APBFanout).node
+    // val luart = LazyModule(new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000)))
+    // val lspi  = LazyModule(new APBSPI(
+    //   AddressSet.misaligned(0x10001000, 0x1000) ++    // SPI controller
+    // AddressSet.misaligned(0x30000000, 0x10000000)   // XIP flash
+    // ))
+    // List(lspi.node, luart.node).map(_ := apbxbar)
+    // apbxbar := AXI4ToAPB() := xbar
+  } 
+  // val simMem = AXI4RAM(address = AddressSet.misaligned(ChipLinkParam.mem.base, ChipLinkParam.mem.mask + 1).head, beatBytes =  8)
+  // simMem := AXI4Buffer() := AXI4Fragmenter() := xbar
+  val dummyNode = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
+  dummyNode := xbar
   lazy val module = new LazyModuleImp(this) with DontTouch {
     val dut = ldut.module
     dut.clockFPGA := clock
@@ -138,8 +145,10 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // Don't connect Slaves
     dut.io_slave.tieoff()
     // UART and SPI
-    val spiFlash = Module(new spiFlash)
-    spiFlash.io <> lspi.module.spi_bundle
-    luart.module.uart.rx := false.B
+    if(!fpga) {
+      // val spiFlash = Module(new spiFlash)
+      // spiFlash.io <> lspi.module.spi_bundle
+      // luart.module.uart.rx := false.B
+    }
   }
 }

@@ -17,12 +17,10 @@ import sifive.blocks.devices.chiplink._
 
 object ChipLinkParam {
   // Must have a cacheable address sapce.
-  val mem  = AddressSet(0x80000000L, 0x80000000L - 1)
-  val mmio = AddressSet(0x40000000L, 0x40000000L - 1)
   // pynq settings
-  // val mem  = AddressSet(0x0000000010000000L, 0x10000000L - 1)
-  // val mmio = AddressSet(0x00000000e0000000L, 0x20000000L - 1)
-  val allSpace = Seq(mem, mmio)
+  val mem  = AddressSet.misaligned(0x10000000L, 0xd0000000L)
+  val mmio = AddressSet.misaligned(0xe0000000L, 0x20000000L)
+  val allSpace = mem ++ mmio
   val idBits = 4
 }
 
@@ -33,8 +31,8 @@ class LinkTopBase(implicit p: Parameters) extends LazyModule {
   val ferr = LazyModule(new TLError(DevNullParams(Seq(AddressSet(0x1000L, 0x1000L - 1)), 64, 64, region = RegionType.TRACKED)))
 
   val chiplinkParam = ChipLinkParams(
-    TLUH = List(ChipLinkParam.mmio),
-    TLC  = List(ChipLinkParam.mem),
+    TLUH = ChipLinkParam.mmio,
+    TLC  = ChipLinkParam.mem,
     syncTX = true
   )
 
@@ -66,7 +64,8 @@ trait CanHaveAXI4MasterMemPortForLinkTop { this: LinkTopBase =>
 
       AXI4SlavePortParameters(
         slaves = Seq(AXI4SlaveParameters(
-          address       = base.intersect(filter).toList,
+          // address       = base.map(_.intersect(filter)),
+          address       = base,
           resources     = device.reg,
           regionType    = RegionType.UNCACHED, // cacheable
           executable    = true,
@@ -124,7 +123,7 @@ trait CanHaveAXI4MasterMMIOPortForLinkTop { this: LinkTopBase =>
     mmioPortParamsOpt.map(params =>
       AXI4SlavePortParameters(
         slaves = Seq(AXI4SlaveParameters(
-          address       = Seq(ChipLinkParam.mmio),
+          address       = ChipLinkParam.mmio,
           resources     = device.ranges,
           executable    = params.executable,
           supportsWrite = TransferSizes(1, params.maxXferBytes),
